@@ -71,7 +71,7 @@ cpu prog (button, input) = runRTL $ do
                             next
                      , IF isDec $ do
                             we := high
-                            cellNew := cell + 1
+                            cellNew := cell - 1
                             next
                      , IF isIncPtr $ do
                             pointer := reg pointer + 1
