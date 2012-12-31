@@ -39,7 +39,7 @@ cpu prog (button, input) = runRTL $ do
 
     s <- newReg (0 :: X6)
     let isState x = reg s .==. pureS x
-        isDecode = isState 0
+        isFetch = isState 0
         isExec = isState 1
         isWaitIn = isState 2
         isWaitOut = isState 3
@@ -61,7 +61,7 @@ cpu prog (button, input) = runRTL $ do
                           }
 
     let next = s := 4
-    CASE [ IF isDecode $ do
+    CASE [ IF isFetch $ do
                 op := prog (reg pc)
                 s := 1
          , IF isExec $ do
