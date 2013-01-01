@@ -1,8 +1,10 @@
-MAIN		= IOTest
-TOP		= IOTest
+MAIN		= Brainfuck
+TOP		= Brainfuck
 VHDL_MODS	=
+HS_MODS		= CPU
 
 LAVADIR		= ../src
+HS_SRCS		= $(patsubst %, $(LAVADIR)/%.hs, $(HS_MODS) $(TOP))
 SRCDIR		= src
 FPGA		= xc3s500e-vq100-5
 XSTDIR		= xst
@@ -31,8 +33,8 @@ clean:
 	rm -f $(GENS)
 	rm -rf _xmsgs ngo $(wildcard xlnx_auto_*_xdb) xst
 
-$(GEN_VHDLS): $(LAVADIR)/$(MAIN).hs
-	$(RUNGHC) -i$(LAVADIR) $<
+$(GEN_VHDLS): $(HS_SRCS)
+	$(RUNGHC) -i$(LAVADIR) $(LAVADIR)/$(TOP).hs
 
 $(MAIN).prj: Makefile
 	echo $(foreach VHDL_SRC,$(VHDLS),'vhdl work "$(VHDL_SRC)"\n') > $@
