@@ -61,18 +61,15 @@ cpu progROM (button, input) = runRTL $ do
         cell = asyncRead ram addr
 
     s <- newReg Fetch
-    let isState x = reg s .==. pureS x
-        isExec = isState Exec
-        isWaitIn = isState WaitIn
-        isWaitOut = isState WaitOut
-
     let ch = fromIntegral . ord :: Char -> U8
 
     let dbg = CPUDebugInfo{ cpuPC = reg pc
-                          , cpuExec = isExec
-                          , cpuWaitIn = isWaitIn
-                          , cpuWaitOut = isWaitOut
+                          , cpuExec = isState Exec
+                          , cpuWaitIn = isState WaitIn
+                          , cpuWaitOut = isState WaitOut
                           }
+          where
+            isState x = reg s .==. pureS x
 
     let next = do
             pc := reg pc + 1
@@ -113,8 +110,9 @@ cpu progROM (button, input) = runRTL $ do
       , WaitOut ==> WHEN button next
       ]
 
-    let requestInput = isWaitIn
-        output = packEnabled isWaitOut cell
+    let requestInput = reg s .==. pureS WaitIn
+        outputReady = reg s .==. pureS WaitOut
+        output = packEnabled outputReady cell
     return (dbg, (requestInput, output))
 
 indexList :: (Size n) => [a] -> Unsigned n -> Maybe a
