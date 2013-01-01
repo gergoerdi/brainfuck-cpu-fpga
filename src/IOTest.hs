@@ -7,6 +7,7 @@ import Hardware.KansasLava.Boards.Papilio
 import Hardware.KansasLava.Boards.Papilio.LogicStart
 import Hardware.KansasLava.SevenSegment
 import Data.Sized.Matrix
+import Data.Sized.Arith (X0_, X1_)
 import Data.Sized.Unsigned as Unsigned
 
 import Control.Monad (liftM)
@@ -23,27 +24,31 @@ data CPUDebugInfo c = CPUDebugInfo{ cpuPC :: Signal c U8
                                   }
 
 data CPUState = Fetch
+              | WaitRAM
               | Exec
               | WaitIn
               | WaitOut
               deriving (Show, Eq, Enum, Bounded)
 
 instance Rep CPUState where
-    type W CPUState = X2
+    type W CPUState = X3
     newtype X CPUState = CPUStateX{ unCPUStateX :: Maybe CPUState }
 
     unX = unCPUStateX
     optX = CPUStateX
     toRep s = toRep . optX $ s'
       where
-        s' :: Maybe X4
+        s' :: Maybe X5
         s' = fmap (fromIntegral . fromEnum) $ unX s
     fromRep rep = optX $ fmap (toEnum . fromIntegral . toInteger) $ unX x4
       where
-        x4 :: X X4
+        x4 :: X X5
         x4 = sizedFromRepToIntegral rep
 
-    repType _ = repType (Witness :: Witness X4)
+    repType _ = repType (Witness :: Witness X5)
+
+type X32768 = X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (
+              X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X1_ X0)))))))))))))))
 
 cpu :: forall c sig. (Clock c, sig ~ Signal c)
     => (sig U8 -> sig U8)
@@ -53,12 +58,16 @@ cpu progROM (button, input) = runRTL $ do
     pc <- newReg (0 :: U8)
     op <- newReg (0 :: U8)
 
-    pointer <- newReg (0 :: Unsigned X8)
-    let addr = coerce (fromIntegral . toInteger :: Unsigned X8 -> X256) (reg pointer)
+    pointer <- newReg (0 :: Unsigned X15)
+    let addr = coerce toAddr (reg pointer)
+          where
+            toAddr :: Unsigned X15 -> X32768
+            toAddr = fromIntegral . toInteger
+
     cellNew <- newReg (0 :: Unsigned X8)
     we <- newReg False
     let ram = writeMemory $ packEnabled (reg we) $ pack (addr, reg cellNew)
-        cell = asyncRead ram addr
+        cell = syncRead ram addr
 
     s <- newReg Fetch
     let ch = fromIntegral . ord :: Char -> U8
@@ -79,6 +88,8 @@ cpu progROM (button, input) = runRTL $ do
       [ Fetch ==> do
              we := low
              op := progROM (reg pc)
+             s := pureS WaitRAM
+      , WaitRAM ==> do
              s := pureS Exec
       , Exec ==> switch op
           [ ch '+' ==> do
@@ -135,15 +146,13 @@ testBench prog = do
 
         display = mux requestInput (outputD, input)
         (displayHi, displayLo) = both decode . splitByte $ display
+        displayE = outputE .||. requestInput
 
         (pcHi, pcLo) = both decode . splitByte $ cpuPC dbg
 
-    sseg $ driveSS_ $ matrix
-      [ Just pcHi
-      , Just pcLo
-      , Just displayHi
-      , Just displayLo
-      ]
+    let ssE = matrix [ high, high, displayE, displayE ]
+        ssD = matrix [ pcHi, pcLo, displayHi, displayLo ]
+    sseg $ driveSS ssE ssD
     leds $ matrix $ replicate 5 low ++ [ cpuExec dbg, cpuWaitIn dbg, cpuWaitOut dbg ]
   where
     decode :: (sig ~ Signal c) => sig (Unsigned X4) -> Matrix X7 (sig Bool)
@@ -153,7 +162,8 @@ main :: IO ()
 main = do
     kleg <- reifyFabric $ do
         board_init
-        testBench "++.++.>.+++.,++."
+        testBench "+++.++.>.+++.,++."
+        --         0123456789abcdef0
 
     createDirectoryIfMissing True outPath
     writeVhdlPrelude $ outVHDL "lava-prelude"
