@@ -58,6 +58,8 @@ cpu progROM (button, input) = runRTL $ do
     -- The opcode currently getting executed
     op <- newReg (0 :: U8)
 
+    -- Depth counter, for skip-ahead/rewind
+    dc <- newReg (0 :: U15)
 
     -- Pointer to RAM
     pointer <- newReg (0 :: Unsigned X15)
@@ -113,6 +115,16 @@ cpu progROM (button, input) = runRTL $ do
           , ch '<' ==> do
                  pointer := reg pointer - 1
                  next
+          , ch '[' ==> do
+                 CASE [ IF (cell .==. pureS 0) $ do
+                             dc := pureS 0
+                             s := pureS SkipFwd
+                      , OTHERWISE next
+                      ]
+          , ch ']' ==> do
+                 dc := pureS 0
+                 -- TODO: check if we could exit the loop
+                 s := pureS Rewind
           , ch '.' ==> do
                  s := pureS WaitOut
           , ch ',' ==> do
