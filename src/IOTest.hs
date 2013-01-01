@@ -22,6 +22,29 @@ data CPUDebugInfo c = CPUDebugInfo{ cpuPC :: Signal c U8
                                   , cpuWaitOut :: Signal c Bool
                                   }
 
+data CPUState = Fetch
+              | Exec
+              | WaitIn
+              | WaitOut
+              deriving (Show, Eq, Enum, Bounded)
+
+instance Rep CPUState where
+    type W CPUState = X2
+    newtype X CPUState = CPUStateX{ unCPUStateX :: Maybe CPUState }
+
+    unX = unCPUStateX
+    optX = CPUStateX
+    toRep s = toRep . optX $ s'
+      where
+        s' :: Maybe X4
+        s' = fmap (fromIntegral . fromEnum) $ unX s
+    fromRep rep = optX $ fmap (toEnum . fromIntegral . toInteger) $ unX x4
+      where
+        x4 :: X X4
+        x4 = sizedFromRepToIntegral rep
+
+    repType _ = repType (Witness :: Witness X4)
+
 cpu :: forall c sig. (Clock c, sig ~ Signal c)
     => (sig U8 -> sig U8)
     -> (sig Bool, sig U8)
@@ -37,13 +60,12 @@ cpu prog (button, input) = runRTL $ do
     let ram = writeMemory $ packEnabled (reg we) $ pack (addr, reg cellNew)
         cell = asyncRead ram addr
 
-    s <- newReg (0 :: X6)
+    s <- newReg Fetch
     let isState x = reg s .==. pureS x
-        isFetch = isState 0
-        isExec = isState 1
-        isWaitIn = isState 2
-        isWaitOut = isState 3
-        isNext = isState 4
+        isFetch = isState Fetch
+        isExec = isState Exec
+        isWaitIn = isState WaitIn
+        isWaitOut = isState WaitOut
 
     let isOp c = reg op .==. pureS (fromIntegral . ord $ c)
         isInc = isOp '+'
@@ -60,10 +82,13 @@ cpu prog (button, input) = runRTL $ do
                           , cpuWaitOut = isWaitOut
                           }
 
-    let next = s := 4
+    let next = do
+            pc := reg pc + 1
+            s := pureS Fetch
     CASE [ IF isFetch $ do
+                we := low
                 op := prog (reg pc)
-                s := 1
+                s := pureS Exec
          , IF isExec $ do
                 CASE [ IF isInc $ do
                             we := high
@@ -80,9 +105,9 @@ cpu prog (button, input) = runRTL $ do
                             pointer := reg pointer - 1
                             next
                      , IF isPrint $ do
-                            s := 3
+                            s := pureS WaitOut
                      , IF isRead $ do
-                            s := 2
+                            s := pureS WaitIn
                      , IF isHalt $ return ()
                      , OTHERWISE next
                      ]
@@ -93,10 +118,6 @@ cpu prog (button, input) = runRTL $ do
                     next
          , IF isWaitOut $ do
                 WHEN button next
-         , IF isNext $ do
-                pc := reg pc + 1
-                we := low
-                s := 0
          ]
 
     let requestInput = isWaitIn
