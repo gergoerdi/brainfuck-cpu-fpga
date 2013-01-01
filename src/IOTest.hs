@@ -49,7 +49,7 @@ cpu :: forall c sig. (Clock c, sig ~ Signal c)
     => (sig U8 -> sig U8)
     -> (sig Bool, sig U8)
     -> (CPUDebugInfo c, (sig Bool, sig (Enabled U8)))
-cpu prog (button, input) = runRTL $ do
+cpu progROM (button, input) = runRTL $ do
     pc <- newReg (0 :: U8)
     op <- newReg (0 :: U8)
 
@@ -62,19 +62,11 @@ cpu prog (button, input) = runRTL $ do
 
     s <- newReg Fetch
     let isState x = reg s .==. pureS x
-        isFetch = isState Fetch
         isExec = isState Exec
         isWaitIn = isState WaitIn
         isWaitOut = isState WaitOut
 
-    let isOp c = reg op .==. pureS (fromIntegral . ord $ c)
-        isInc = isOp '+'
-        isDec = isOp '-'
-        isIncPtr = isOp '>'
-        isDecPtr = isOp '<'
-        isPrint = isOp '.'
-        isRead = isOp ','
-        isHalt = isOp '\0'
+    let ch = fromIntegral . ord :: Char -> U8
 
     let dbg = CPUDebugInfo{ cpuPC = reg pc
                           , cpuExec = isExec
@@ -85,40 +77,41 @@ cpu prog (button, input) = runRTL $ do
     let next = do
             pc := reg pc + 1
             s := pureS Fetch
-    CASE [ IF isFetch $ do
-                we := low
-                op := prog (reg pc)
-                s := pureS Exec
-         , IF isExec $ do
-                CASE [ IF isInc $ do
-                            we := high
-                            cellNew := cell + 1
-                            next
-                     , IF isDec $ do
-                            we := high
-                            cellNew := cell - 1
-                            next
-                     , IF isIncPtr $ do
-                            pointer := reg pointer + 1
-                            next
-                     , IF isDecPtr $ do
-                            pointer := reg pointer - 1
-                            next
-                     , IF isPrint $ do
-                            s := pureS WaitOut
-                     , IF isRead $ do
-                            s := pureS WaitIn
-                     , IF isHalt $ return ()
-                     , OTHERWISE next
-                     ]
-         , IF isWaitIn $ do
-                WHEN button $ do
-                    we := high
-                    cellNew := input
-                    next
-         , IF isWaitOut $ do
-                WHEN button next
-         ]
+
+    switch s
+      [ Fetch ==> do
+             we := low
+             op := progROM (reg pc)
+             s := pureS Exec
+      , Exec ==> switch op
+          [ ch '+' ==> do
+                 we := high
+                 cellNew := cell + 1
+                 next
+          , ch '-' ==> do
+                 we := high
+                 cellNew := cell - 1
+                 next
+          , ch '>' ==> do
+                 pointer := reg pointer + 1
+                 next
+          , ch '<' ==> do
+                 pointer := reg pointer - 1
+                 next
+          , ch '.' ==> do
+                 s := pureS WaitOut
+          , ch ',' ==> do
+                 s := pureS WaitIn
+          , ch '\0' ==> return ()
+          , oTHERWISE next
+          ]
+      , WaitIn ==> do
+             WHEN button $ do
+                 we := high
+                 cellNew := input
+                 next
+      , WaitOut ==> WHEN button next
+      ]
 
     let requestInput = isWaitIn
         output = packEnabled isWaitOut cell
@@ -127,14 +120,14 @@ cpu prog (button, input) = runRTL $ do
 indexList :: (Size n) => [a] -> Unsigned n -> Maybe a
 indexList [] _ = Nothing
 indexList (x:_) 0 = Just x
-indexList (x:xs) n = indexList xs (n - 1)
+indexList (_:xs) n = indexList xs (n - 1)
 
 testBench :: (LogicStart fabric) => String -> fabric ()
 testBench prog = do
     button <- do
         Buttons{..} <- buttons
-        let (_, right, _) = debounce (Witness :: Witness X16) buttonRight
-        return right
+        let (_, button, _) = debounce (Witness :: Witness X16) buttonLeft
+        return button
     input <- toUnsigned `liftM` switches
 
     let progROM = funMap (Just . fromIntegral . toInteger . ord . fromMaybe '\0' . indexList prog)

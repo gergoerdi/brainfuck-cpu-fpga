@@ -5,6 +5,7 @@ module Utils
        , toUnsigned, fromUnsigned
        , splitByte
        , both
+       , switch, (==>), oTHERWISE
        ) where
 
 import Language.KansasLava
@@ -50,3 +51,14 @@ toUnsigned = coerce Unsigned.fromMatrix . pack
 
 fromUnsigned :: (sig ~ Signal c, Size ix) => sig (Unsigned ix) -> Matrix ix (sig Bool)
 fromUnsigned = unpack . coerce Unsigned.toMatrix
+
+switch :: (Eq a, Rep a) => Reg s c a -> [(Maybe a, RTL s c ())] -> RTL s c ()
+switch r = CASE . map (uncurry $ maybe OTHERWISE toIF)
+  where
+    toIF x rtl = IF (reg r .==. pureS x) rtl
+
+(==>) :: (Eq a, Rep a) => a -> RTL s c () -> (Maybe a, RTL s c ())
+x ==> rtl = (Just x, rtl)
+
+oTHERWISE :: (Eq a, Rep a) => RTL s c () -> (Maybe a, RTL s c ())
+oTHERWISE rtl = (Nothing, rtl)
