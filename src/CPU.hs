@@ -89,14 +89,14 @@ cpu progROM (button, input) = runRTL $ do
             pc := reg pc + 1
             s := pureS Fetch
 
-    switch s
+    switch (reg s)
       [ Fetch ==> do
              we := low
              op := progROM (reg pc)
              s := pureS WaitRAM
       , WaitRAM ==> do
              s := pureS Exec
-      , Exec ==> switch op
+      , Exec ==> switch (reg op)
           [ ch '+' ==> do
                  we := high
                  cellNew := cell + 1
