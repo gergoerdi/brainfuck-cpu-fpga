@@ -27,10 +27,10 @@ data CPUState = Fetch
 
 instance Rep CPUState where
     type W CPUState = X3
-    newtype X CPUState = CPUStateX{ unCPUStateX :: Maybe CPUState }
+    newtype X CPUState = XCPUState{ unXCPUState :: Maybe CPUState }
 
-    unX = unCPUStateX
-    optX = CPUStateX
+    unX = unXCPUState
+    optX = XCPUState
     toRep s = toRep . optX $ s'
       where
         s' :: Maybe X5
@@ -50,22 +50,32 @@ cpu :: forall c sig. (Clock c, sig ~ Signal c)
     -> (sig Bool, sig U8)
     -> (CPUDebugInfo c, (sig Bool, sig (Enabled U8)))
 cpu progROM (button, input) = runRTL $ do
+    -- Program counter
     pc <- newReg (0 :: U8)
+
+    -- The opcode currently getting executed
     op <- newReg (0 :: U8)
 
+
+    -- Pointer to RAM
     pointer <- newReg (0 :: Unsigned X15)
     let addr = coerce toAddr (reg pointer)
           where
             toAddr :: Unsigned X15 -> X32768
             toAddr = fromIntegral . toInteger
 
+    -- New value to write into RAM[addr]
     cellNew <- newReg (0 :: Unsigned X8)
+
+    -- Write Enabled
     we <- newReg False
+
+    -- RAM
     let ram = writeMemory $ packEnabled (reg we) $ pack (addr, reg cellNew)
         cell = syncRead ram addr
 
+    -- CPU state
     s <- newReg Fetch
-    let ch = fromIntegral . ord :: Char -> U8
 
     let dbg = CPUDebugInfo{ cpuPC = reg pc
                           , cpuExec = isState Exec
@@ -120,3 +130,5 @@ cpu progROM (button, input) = runRTL $ do
         outputReady = reg s .==. pureS WaitOut
         output = packEnabled outputReady cell
     return (dbg, (requestInput, output))
+  where
+    ch = fromIntegral . ord :: Char -> U8
