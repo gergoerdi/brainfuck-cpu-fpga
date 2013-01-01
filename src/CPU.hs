@@ -21,6 +21,8 @@ data CPUDebugInfo c = CPUDebugInfo{ cpuPC :: Signal c U8
 data CPUState = Fetch
               | WaitRAM
               | Exec
+              | SkipFwd
+              | Rewind
               | WaitIn
               | WaitOut
               deriving (Show, Eq, Enum, Bounded)
@@ -33,14 +35,14 @@ instance Rep CPUState where
     optX = XCPUState
     toRep s = toRep . optX $ s'
       where
-        s' :: Maybe X5
+        s' :: Maybe X7
         s' = fmap (fromIntegral . fromEnum) $ unX s
-    fromRep rep = optX $ fmap (toEnum . fromIntegral . toInteger) $ unX x4
+    fromRep rep = optX $ fmap (toEnum . fromIntegral . toInteger) $ unX x
       where
-        x4 :: X X5
-        x4 = sizedFromRepToIntegral rep
+        x :: X X7
+        x = sizedFromRepToIntegral rep
 
-    repType _ = repType (Witness :: Witness X5)
+    repType _ = repType (Witness :: Witness X7)
 
 type X32768 = X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (
               X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X1_ X0)))))))))))))))
