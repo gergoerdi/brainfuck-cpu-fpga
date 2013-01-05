@@ -76,8 +76,8 @@ cpu CPUIn{..} = runRTL $ do
     dc <- newReg (0 :: U8)
 
     -- Pointer to RAM
-    pointer <- newReg (0 :: Unsigned X15)
-    let addr = coerce toAddr (reg pointer)
+    idx <- newReg (0 :: Unsigned X15)
+    let addr = coerce toAddr (reg idx)
           where
             toAddr :: Unsigned X15 -> X32768
             toAddr = fromIntegral . toInteger
@@ -113,6 +113,8 @@ cpu CPUIn{..} = runRTL $ do
 
     switch (reg s)
       [ Start ==> do
+             pc := pureS 0
+             idx := pureS 0
              s := pureS Fetch
       , Fetch ==> do
              we := low
@@ -130,10 +132,10 @@ cpu CPUIn{..} = runRTL $ do
                  cellNew := cell - 1
                  next
           , ch '>' ==> do
-                 pointer := reg pointer + 1
+                 idx := reg idx + 1
                  next
           , ch '<' ==> do
-                 pointer := reg pointer - 1
+                 idx := reg idx - 1
                  next
           , ch '[' ==> do
                  CASE [ IF (cell .==. pureS 0) $ do
