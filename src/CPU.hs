@@ -155,6 +155,33 @@ cpu CPUIn{..} = runRTL $ do
                  s := pureS Halt
           , oTHERWISE next
           ]
+      , SkipFwd ==> switch cpuProgD
+          [ ch '[' ==> do
+                 dc := reg dc + 1
+                 pc := reg pc + 1
+          , ch ']' ==> do
+                 dc := reg dc - 1
+                 pc := reg pc + 1
+                 WHEN (var dc .==. pureS 0) $ do
+                     s := pureS Fetch
+          , oTHERWISE $ do
+                 pc := reg pc + 1
+          ]
+      , Rewind ==> switch cpuProgD
+          [ ch '[' ==> do
+                 dc := reg dc - 1
+                 switch (var dc)
+                   [ 0 ==> do
+                          s := pureS Fetch
+                   , oTHERWISE $ do
+                          pc := reg pc - 1
+                   ]
+          , ch ']' ==> do
+               dc := reg dc + 1
+               pc := reg pc - 1
+          , oTHERWISE $ do
+               pc := reg pc - 1
+          ]
       , WaitIn ==> do
              WHEN cpuButton $ do
                  we := high

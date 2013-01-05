@@ -63,7 +63,7 @@ main :: IO ()
 main = do
     kleg <- reifyFabric $ do
         board_init
-        testBench "+++.++.>.+++.,++."
+        testBench "++++[->.++<]"
         --         0123456789abcdef0
 
     createDirectoryIfMissing True outPath
