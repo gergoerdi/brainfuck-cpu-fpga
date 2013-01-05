@@ -47,7 +47,14 @@ testBench prog = do
     let ssE = matrix [ high, high, displayE, displayE ]
         ssD = matrix [ pcHi, pcLo, displayHi, displayLo ]
     sseg $ driveSS ssE ssD
-    leds $ matrix $ reverse $ [ cpuExec dbg, cpuWaitIn dbg, cpuWaitOut dbg ] ++ replicate 5 low
+
+    let dbgFlags = [ cpuExec dbg
+                   , cpuHalt dbg
+                   , cpuWaitIn dbg
+                   , cpuWaitOut dbg
+                   , displayE
+                   ]
+    leds $ matrix $ reverse $ dbgFlags ++ replicate 3 low
   where
     decode :: (sig ~ Signal c) => sig (Unsigned X4) -> Matrix X7 (sig Bool)
     decode = unpack . funMap (Just . decodeHexSS)

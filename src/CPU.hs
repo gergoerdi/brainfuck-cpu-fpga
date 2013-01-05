@@ -27,6 +27,7 @@ data CPUOut c = CPUOut{ cpuProgA :: Signal c U8
 
 data CPUDebug c = CPUDebug{ cpuPC :: Signal c U8
                           , cpuExec :: Signal c Bool
+                          , cpuHalt :: Signal c Bool
                           , cpuWaitIn :: Signal c Bool
                           , cpuWaitOut :: Signal c Bool
                           }
@@ -39,24 +40,25 @@ data CPUState = Start
               | Rewind
               | WaitIn
               | WaitOut
+              | Halt
               deriving (Show, Eq, Enum, Bounded)
 
 instance Rep CPUState where
-    type W CPUState = X3
+    type W CPUState = X4
     newtype X CPUState = XCPUState{ unXCPUState :: Maybe CPUState }
 
     unX = unXCPUState
     optX = XCPUState
     toRep s = toRep . optX $ s'
       where
-        s' :: Maybe X8
+        s' :: Maybe X9
         s' = fmap (fromIntegral . fromEnum) $ unX s
     fromRep rep = optX $ fmap (toEnum . fromIntegral . toInteger) $ unX x
       where
-        x :: X X8
+        x :: X X9
         x = sizedFromRepToIntegral rep
 
-    repType _ = repType (Witness :: Witness X8)
+    repType _ = repType (Witness :: Witness X9)
 
 type X32768 = X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (
               X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X1_ X0)))))))))))))))
@@ -96,6 +98,7 @@ cpu CPUIn{..} = runRTL $ do
 
     let dbg = CPUDebug{ cpuPC = reg pc
                       , cpuExec = isState Exec
+                      , cpuHalt = isState Halt
                       , cpuWaitIn = isState WaitIn
                       , cpuWaitOut = isState WaitOut
                       }
@@ -146,7 +149,8 @@ cpu CPUIn{..} = runRTL $ do
                  s := pureS WaitOut
           , ch ',' ==> do
                  s := pureS WaitIn
-          , ch '\0' ==> return ()
+          , ch '\0' ==> do
+                 s := pureS Halt
           , oTHERWISE next
           ]
       , WaitIn ==> do
@@ -155,6 +159,8 @@ cpu CPUIn{..} = runRTL $ do
                  cellNew := cpuInput
                  next
       , WaitOut ==> WHEN cpuButton next
+      , Halt ==> do
+          s := pureS Halt
       ]
 
     return (dbg, out)
