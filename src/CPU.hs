@@ -1,7 +1,10 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
 module CPU
-       ( CPUDebugInfo(..)
+       ( CPUOut(..)
+       , CPUIn(..)
+       , CPUDebug(..)
        , cpu
        ) where
 
@@ -12,13 +15,24 @@ import Data.Sized.Arith (X0_, X1_)
 import Data.Sized.Unsigned as Unsigned
 import Data.Char
 
-data CPUDebugInfo c = CPUDebugInfo{ cpuPC :: Signal c U8
-                                  , cpuExec :: Signal c Bool
-                                  , cpuWaitIn :: Signal c Bool
-                                  , cpuWaitOut :: Signal c Bool
-                                  }
+data CPUIn c = CPUIn{ cpuProgD :: Signal c U8
+                    , cpuButton :: Signal c Bool
+                    , cpuInput :: Signal c U8
+                    }
 
-data CPUState = Fetch
+data CPUOut c = CPUOut{ cpuProgA :: Signal c U8
+                      , cpuNeedInput :: Signal c Bool
+                      , cpuOutput :: Signal c (Enabled U8)
+                      }
+
+data CPUDebug c = CPUDebug{ cpuPC :: Signal c U8
+                          , cpuExec :: Signal c Bool
+                          , cpuWaitIn :: Signal c Bool
+                          , cpuWaitOut :: Signal c Bool
+                          }
+
+data CPUState = Start
+              | Fetch
               | WaitRAM
               | Exec
               | SkipFwd
@@ -35,23 +49,21 @@ instance Rep CPUState where
     optX = XCPUState
     toRep s = toRep . optX $ s'
       where
-        s' :: Maybe X7
+        s' :: Maybe X8
         s' = fmap (fromIntegral . fromEnum) $ unX s
     fromRep rep = optX $ fmap (toEnum . fromIntegral . toInteger) $ unX x
       where
-        x :: X X7
+        x :: X X8
         x = sizedFromRepToIntegral rep
 
-    repType _ = repType (Witness :: Witness X7)
+    repType _ = repType (Witness :: Witness X8)
 
 type X32768 = X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (
               X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X1_ X0)))))))))))))))
 
 cpu :: forall c sig. (Clock c, sig ~ Signal c)
-    => (sig U8 -> sig U8)
-    -> (sig Bool, sig U8)
-    -> (CPUDebugInfo c, (sig Bool, sig (Enabled U8)))
-cpu progROM (button, input) = runRTL $ do
+    => CPUIn c -> (CPUDebug c, CPUOut c)
+cpu CPUIn{..} = runRTL $ do
     -- Program counter
     pc <- newReg (0 :: U8)
 
@@ -59,7 +71,7 @@ cpu progROM (button, input) = runRTL $ do
     op <- newReg (0 :: U8)
 
     -- Depth counter, for skip-ahead/rewind
-    dc <- newReg (0 :: U15)
+    dc <- newReg (0 :: U8)
 
     -- Pointer to RAM
     pointer <- newReg (0 :: Unsigned X15)
@@ -79,24 +91,29 @@ cpu progROM (button, input) = runRTL $ do
         cell = syncRead ram addr
 
     -- CPU state
-    s <- newReg Fetch
+    s <- newReg Start
+    let isState x = reg s .==. pureS x
 
-    let dbg = CPUDebugInfo{ cpuPC = reg pc
-                          , cpuExec = isState Exec
-                          , cpuWaitIn = isState WaitIn
-                          , cpuWaitOut = isState WaitOut
-                          }
-          where
-            isState x = reg s .==. pureS x
+    let dbg = CPUDebug{ cpuPC = reg pc
+                      , cpuExec = isState Exec
+                      , cpuWaitIn = isState WaitIn
+                      , cpuWaitOut = isState WaitOut
+                      }
 
+        out = CPUOut{ cpuProgA = var pc
+                    , cpuNeedInput = isState WaitIn
+                    , cpuOutput = packEnabled (isState WaitOut) cell
+                    }
     let next = do
             pc := reg pc + 1
             s := pureS Fetch
 
     switch (reg s)
-      [ Fetch ==> do
+      [ Start ==> do
+             s := pureS Fetch
+      , Fetch ==> do
              we := low
-             op := progROM (reg pc)
+             op := cpuProgD
              s := pureS WaitRAM
       , WaitRAM ==> do
              s := pureS Exec
@@ -133,16 +150,13 @@ cpu progROM (button, input) = runRTL $ do
           , oTHERWISE next
           ]
       , WaitIn ==> do
-             WHEN button $ do
+             WHEN cpuButton $ do
                  we := high
-                 cellNew := input
+                 cellNew := cpuInput
                  next
-      , WaitOut ==> WHEN button next
+      , WaitOut ==> WHEN cpuButton next
       ]
 
-    let requestInput = reg s .==. pureS WaitIn
-        outputReady = reg s .==. pureS WaitOut
-        output = packEnabled outputReady cell
-    return (dbg, (requestInput, output))
+    return (dbg, out)
   where
     ch = fromIntegral . ord :: Char -> U8

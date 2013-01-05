@@ -29,14 +29,18 @@ testBench prog = do
         return button
     input <- toUnsigned `liftM` switches
 
-    let progROM = funMap (Just . fromIntegral . toInteger . ord . fromMaybe '\0' . indexList prog)
+    let toOpcode = fromIntegral . toInteger . ord . fromMaybe '\0' . indexList prog
+        cpuIn = CPUIn{ cpuProgD = rom cpuProgA (Just . toOpcode)
+                     , cpuButton = button
+                     , cpuInput = input
+                     }
+        (dbg, CPUOut{..}) = cpu cpuIn
 
-    let (dbg, (requestInput, output)) = cpu progROM (button, input)
-        (outputE, outputD) = unpackEnabled output
+    let (outputE, outputD) = unpackEnabled cpuOutput
 
-        display = mux requestInput (outputD, input)
+        display = mux cpuNeedInput (outputD, input)
         (displayHi, displayLo) = both decode . splitByte $ display
-        displayE = outputE .||. requestInput
+        displayE = outputE .||. cpuNeedInput
 
         (pcHi, pcLo) = both decode . splitByte $ cpuPC dbg
 
