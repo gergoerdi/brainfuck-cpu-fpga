@@ -14,6 +14,7 @@ import Data.Maybe (fromMaybe)
 
 import System.FilePath
 import System.Directory
+import System.Environment (getArgs)
 import Data.Char
 
 indexList :: (Size n) => [a] -> Unsigned n -> Maybe a
@@ -59,15 +60,18 @@ testBench prog = do
     decode :: (sig ~ Signal c) => sig (Unsigned X4) -> Matrix X7 (sig Bool)
     decode = unpack . funMap (Just . decodeHexSS)
 
-main :: IO ()
-main = do
+helloWorld :: String
+helloWorld = unlines
+    [ ">+++++++++[<++++++++>-]<.>+++++++[<++++>-]<+.+++++++..+++.[-]"
+    , ">++++++++[<++++>-] <.>+++++++++++[<++++++++>-]<-.--------.+++"
+    , ".------.--------.[-]>++++++++[<++++>- ]<+.[-]++++++++++."
+    ]
+
+emitBench :: String -> IO ()
+emitBench prog = do
     kleg <- reifyFabric $ do
         board_init
-        testBench . unlines $
-          [ ">+++++++++[<++++++++>-]<.>+++++++[<++++>-]<+.+++++++..+++.[-]"
-          , ">++++++++[<++++>-] <.>+++++++++++[<++++++++>-]<-.--------.+++"
-          , ".------.--------.[-]>++++++++[<++++>- ]<+.[-]++++++++++."
-          ]
+        testBench prog
 
     createDirectoryIfMissing True outPath
     writeVhdlPrelude $ outVHDL "lava-prelude"
@@ -77,3 +81,12 @@ main = do
     modName = "Brainfuck"
     outPath = ".." </> "ise" </> "src"
     outVHDL name = outPath </> name <.> "vhdl"
+
+main :: IO ()
+main = do
+    args <- getArgs
+    prog <- case args of
+        [filename] -> readFile filename
+        _ -> return helloWorld
+
+    emitBench prog
