@@ -20,12 +20,12 @@ data CPUIn c = CPUIn{ cpuProgD :: Signal c U8
                     , cpuInput :: Signal c U8
                     }
 
-data CPUOut c = CPUOut{ cpuProgA :: Signal c U8
+data CPUOut c = CPUOut{ cpuProgA :: Signal c U13
                       , cpuNeedInput :: Signal c Bool
                       , cpuOutput :: Signal c (Enabled U8)
                       }
 
-data CPUDebug c = CPUDebug{ cpuPC :: Signal c U8
+data CPUDebug c = CPUDebug{ cpuPC :: Signal c U13
                           , cpuExec :: Signal c Bool
                           , cpuHalt :: Signal c Bool
                           , cpuWaitIn :: Signal c Bool
@@ -67,7 +67,7 @@ cpu :: forall c sig. (Clock c, sig ~ Signal c)
     => CPUIn c -> (CPUDebug c, CPUOut c)
 cpu CPUIn{..} = runRTL $ do
     -- Program counter
-    pc <- newReg (0 :: U8)
+    pc <- newReg 0
 
     -- The opcode currently getting executed
     op <- newReg (0 :: U8)
