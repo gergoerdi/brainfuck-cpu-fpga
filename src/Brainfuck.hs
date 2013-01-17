@@ -22,6 +22,12 @@ indexList [] _ = Nothing
 indexList (x:_) 0 = Just x
 indexList (_:xs) n = indexList xs (n - 1)
 
+ssI :: (sig ~ Signal c) => Matrix X7 (sig Bool)
+ssI = matrix [  low,  low,  low,  low, high,  low,  low ]
+
+ssO :: (sig ~ Signal c) => Matrix X7 (sig Bool)
+ssO = matrix [  low,  low, high, high, high,  low, high ]
+
 testBench :: (LogicStart fabric) => String -> fabric ()
 testBench prog = do
     button <- do
@@ -39,21 +45,27 @@ testBench prog = do
 
     let (outputE, outputD) = unpackEnabled cpuOutput
 
-        display = mux cpuNeedInput (outputD, input)
-        (displayHi, displayLo) = both decode . splitByte $ display
-        displayE = outputE .||. cpuNeedInput
+        digit = mux cpuNeedInput (outputD, input)
+        (digitHi, digitLo) = both decode . splitByte $ digit
+        digitE = outputE .||. cpuNeedInput
 
-        (pcHi, pcLo) = both decode . splitByte $ cpuPC dbg
+        i, o :: Seq (Matrix X7 Bool)
+        i = pack ssI
+        o = pack ssO
 
-    let ssE = matrix [ high, high, displayE, displayE ]
-        ssD = matrix [ pcHi, pcLo, displayHi, displayLo ]
+        io :: Matrix X7 (Seq Bool)
+        io = unpack $ mux cpuNeedInput (o, i)
+
+    let ssE = matrix [ low, digitE, digitE, digitE ]
+        zero = matrix $ replicate 7 low
+        ssD = matrix [ zero, io, digitHi, digitLo ]
     sseg $ driveSS ssE ssD
 
     let dbgFlags = [ cpuExec dbg
                    , cpuHalt dbg
                    , cpuWaitIn dbg
                    , cpuWaitOut dbg
-                   , displayE
+                   , digitE
                    ]
     leds $ matrix $ reverse $ dbgFlags ++ replicate 3 low
   where
