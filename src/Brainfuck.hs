@@ -6,7 +6,7 @@ import CPU
 import Hardware.KansasLava.Boards.Papilio
 import Hardware.KansasLava.Boards.Papilio.LogicStart
 import Hardware.KansasLava.SevenSegment
-import Data.Sized.Matrix
+import Data.Sized.Matrix as Matrix
 import Data.Sized.Unsigned as Unsigned
 
 import Control.Monad (liftM)
@@ -22,11 +22,23 @@ indexList [] _ = Nothing
 indexList (x:_) 0 = Just x
 indexList (_:xs) n = indexList xs (n - 1)
 
-ssI :: (sig ~ Signal c) => Matrix X7 (sig Bool)
-ssI = matrix [  low,  low,  low,  low, high,  low,  low ]
+ssI :: Matrix X7 Bool
+ssI = matrix [ False, False,  True, False, False, False, False ]
 
-ssO :: (sig ~ Signal c) => Matrix X7 (sig Bool)
-ssO = matrix [  low,  low, high, high, high,  low, high ]
+ssO :: Matrix X7 Bool
+ssO = matrix [ False, False,  True,  True,  True, False,  True ]
+
+ssH :: Matrix X7 Bool
+ssH = matrix [ False, False,  True, False,  True,  True,  True ]
+
+ssA :: Matrix X7 Bool
+ssA = matrix [  True,  True,  True, False,  True,  True,  True ]
+
+ssL :: Matrix X7 Bool
+ssL = matrix [ False, False, False,  True,  True,  True, False ]
+
+ssT :: Matrix X7 Bool
+ssT = matrix [ False, False, False,  True,  True,  True,  True ]
 
 testBench :: (LogicStart fabric) => String -> fabric ()
 testBench prog = do
@@ -41,7 +53,7 @@ testBench prog = do
                      , cpuButton = button
                      , cpuInput = input
                      }
-        (dbg, CPUOut{..}) = cpu cpuIn
+        (CPUDebug{..}, CPUOut{..}) = cpu cpuIn
 
     let (outputE, outputD) = unpackEnabled cpuOutput
 
@@ -49,28 +61,44 @@ testBench prog = do
         (digitHi, digitLo) = both decode . splitByte $ digit
         digitE = outputE .||. cpuNeedInput
 
-        i, o :: Seq (Matrix X7 Bool)
-        i = pack ssI
-        o = pack ssO
-
         io :: Matrix X7 (Seq Bool)
         io = unpack $ mux cpuNeedInput (o, i)
+          where
+            i = pack $ fmap pureS ssI :: Seq (Matrix X7 Bool)
+            o = pack $ fmap pureS ssO :: Seq (Matrix X7 Bool)
 
-    let ssE = matrix [ low, digitE, digitE, digitE ]
-        zero = matrix $ replicate 7 low
-        ssD = matrix [ zero, io, digitHi, digitLo ]
-    sseg $ driveSS ssE ssD
+    let haltD :: Matrix X4 (Matrix X7 (Seq Bool))
+        haltD = matrix $ map (fmap pureS) [ssH, ssA, ssL, ssT]
+        haltE = matrix [high, high, high, high]
 
-    let dbgFlags = [ cpuExec dbg
-                   , cpuHalt dbg
-                   , cpuWaitIn dbg
-                   , cpuWaitOut dbg
+        noDigit :: Matrix X7 (Seq Bool)
+        noDigit = matrix $ replicate 7 undefinedS
+
+        ioD :: Matrix X4 (Matrix X7 (Seq Bool))
+        ioD = matrix [noDigit, io, digitHi, digitLo]
+        ioE = matrix [low, digitE, digitE, digitE]
+
+        outD :: Matrix X4 (Matrix X7 (Seq Bool))
+        outD = Matrix.zipWith (muxMatrix2 cpuHalt) ioD haltD
+
+        outE :: Matrix X4 (Seq Bool)
+        outE = muxMatrix2 cpuHalt ioE haltE
+
+    sseg $ driveSS outE outD
+
+    let dbgFlags = [ cpuExec
+                   , cpuHalt
+                   , cpuWaitIn
+                   , cpuWaitOut
                    , digitE
                    ]
     leds $ matrix $ reverse $ dbgFlags ++ replicate 3 low
   where
     decode :: (sig ~ Signal c) => sig (Unsigned X4) -> Matrix X7 (sig Bool)
     decode = unpack . funMap (Just . decodeHexSS)
+
+muxMatrix2 :: (sig ~ Signal c, Size n, Rep a) => sig Bool -> Matrix n (sig a) -> Matrix n (sig a) -> Matrix n (sig a)
+muxMatrix2 b = Matrix.zipWith (curry $ mux b)
 
 helloWorld :: String
 helloWorld = unlines
