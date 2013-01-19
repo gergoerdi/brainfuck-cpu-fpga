@@ -23,7 +23,7 @@ indexList (x:_) 0 = Just x
 indexList (_:xs) n = indexList xs (n - 1)
 
 ssI :: Matrix X7 Bool
-ssI = matrix [ False, False,  True, False, False, False, False ]
+ssI = matrix [ False, False, False, False,  True, False, False ]
 
 ssO :: Matrix X7 Bool
 ssO = matrix [ False, False,  True,  True,  True, False,  True ]
