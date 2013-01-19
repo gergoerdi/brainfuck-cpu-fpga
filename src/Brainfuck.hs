@@ -6,10 +6,15 @@ import CPU
 import Hardware.KansasLava.Boards.Papilio
 import Hardware.KansasLava.Boards.Papilio.LogicStart
 import Hardware.KansasLava.SevenSegment
-import Data.Sized.Matrix as Matrix
-import Data.Sized.Unsigned as Unsigned
 
-import Control.Monad (liftM)
+import Data.Sized.Matrix (Matrix, matrix)
+import qualified Data.Sized.Matrix as Matrix
+import Data.Sized.Unsigned as Unsigned
+import Data.Sized.Ix
+
+import Data.Array
+
+import Control.Monad (liftM, guard)
 import Data.Maybe (fromMaybe)
 
 import System.FilePath
@@ -17,10 +22,14 @@ import System.Directory
 import System.Environment (getArgs)
 import Data.Char
 
-indexList :: (Size n) => [a] -> Unsigned n -> Maybe a
-indexList [] _ = Nothing
-indexList (x:_) 0 = Just x
-indexList (_:xs) n = indexList xs (n - 1)
+toROM :: (Size n) => [a] -> Unsigned n -> Maybe a
+toROM xs = \i -> do
+    let i' = fromIntegral i
+    guard $ inRange (bounds arr) i'
+    return $ arr ! i'
+  where
+    n = length xs
+    arr = listArray (0, n-1) xs
 
 ssI :: Matrix X7 Bool
 ssI = matrix [ False, False, False, False,  True, False, False ]
@@ -48,7 +57,7 @@ testBench prog = do
         return button
     input <- toUnsigned `liftM` switches
 
-    let toOpcode = fromIntegral . toInteger . ord . fromMaybe '\0' . indexList prog
+    let toOpcode = fromIntegral . ord . fromMaybe '\0' . toROM prog
         cpuIn = CPUIn{ cpuProgD = rom cpuProgA (Just . toOpcode)
                      , cpuButton = button
                      , cpuInput = input
