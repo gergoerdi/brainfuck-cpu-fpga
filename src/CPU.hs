@@ -10,8 +10,8 @@ module CPU
 
 import Language.KansasLava
 import Utils
+import Address
 import Data.Sized.Matrix
-import Data.Sized.Arith (X0_, X1_)
 import Data.Sized.Unsigned as Unsigned
 import Data.Char
 
@@ -60,9 +60,6 @@ instance Rep CPUState where
 
     repType _ = repType (Witness :: Witness X9)
 
-type X32768 = X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (
-              X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X0_ (X1_ X0)))))))))))))))
-
 cpu :: forall c sig. (Clock c, sig ~ Signal c)
     => CPUIn c -> (CPUDebug c, CPUOut c)
 cpu CPUIn{..} = runRTL $ do
@@ -78,9 +75,6 @@ cpu CPUIn{..} = runRTL $ do
     -- Pointer to RAM
     idx <- newReg (0 :: Unsigned X15)
     let addr = coerce toAddr (reg idx)
-          where
-            toAddr :: Unsigned X15 -> X32768
-            toAddr = fromIntegral . toInteger
 
     -- New value to write into RAM[addr]
     cellNew <- newReg (0 :: Unsigned X8)
